@@ -1,0 +1,166 @@
+﻿@page "/"
+@using KatanBoardGenerator.NewFolder;
+@using Newtonsoft.Json;
+@inject IJSRuntime Js
+
+<div class="main">
+    <div class="header">
+        <div class="border-container">
+            <label class="label">Board Size</label>
+            <InputNumber class="input" @bind-Value="BoardSize" />
+        </div>
+    </div>
+
+    <div id="cy" />
+</div>
+
+@code {
+    private int _boardSize = 2;
+
+    public int BoardSize
+    {
+        get => _boardSize;
+        set
+        {
+            // If the value is different change the underlying value and regenerate the graph for the new board size.
+            if (_boardSize != value)
+            {
+                _boardSize = value;
+                RenderPage?.Invoke();
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    protected override void OnInitialized() => RenderPage += RenderBoard;
+
+    /// <inheritdoc />
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await RenderBoard().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Refreshes rendered board when boardsize changes.
+    /// </summary>
+    /// <returns></returns>
+    internal async Task RenderBoard() => await Js.InvokeVoidAsync("renderGraph", GetGraphData(BoardSize)).ConfigureAwait(false);
+
+    /// <summary>
+    /// Gets the data needed for cytoscape to render the graph from a board size.
+    /// </summary>
+    /// <param name="boardSize">The length of an edge of the board.</param>
+    /// <returns>Graph Data for Cytoscape.</returns>
+    private IEnumerable<Element> GetGraphData(int boardSize)
+    {
+        var basicView = new List<List<int>>();
+
+        // First half top to thickest bit
+        for (int i = 0; i <= boardSize; i++)
+        {
+            var lastMax = basicView.LastOrDefault()?.Max() ?? 0;
+            basicView.Add(Enumerable.Range(lastMax + 1, boardSize + 1 + i).ToList());
+        }
+
+        for (int i = boardSize; i > 0; i--)
+        {
+            var lastMax = basicView.LastOrDefault()?.Max() ?? 0;
+            basicView.Add(Enumerable.Range(lastMax + 1, boardSize + i).ToList());
+        }
+
+        var middleRow = (int)Math.Floor(basicView.Count() / 2d);
+
+        // Process nodes with explicit coordinates.
+        List<Element> nodes = new List<Element>();
+        for (int rowIndex = 0; rowIndex < basicView.Count(); rowIndex++)
+        {
+            var iteratorList = basicView[rowIndex];
+            for (int itemIndex = 0; itemIndex < iteratorList.Count(); itemIndex++)
+            {
+                // Iterating through each node individually.
+                var currentItem = iteratorList[itemIndex];
+
+                // If we're before or at the middle row the rows are getting bigger, hence we increase offset each time.
+                if (rowIndex <= middleRow)
+                {
+                    nodes.Add(new Element(
+                        new ElementData(currentItem.ToString()),
+                        new Coordinates((-50*rowIndex) + (itemIndex * 100), rowIndex * 100)
+                    ));
+                }
+                else
+                {
+                    // After the middle row it gets smaller, decreasing the offset eachtime.
+                    nodes.Add(new Element(
+                        new ElementData(currentItem.ToString()),
+                        new Coordinates(((basicView.Count() - rowIndex - 1)*-50) + (itemIndex * 100), rowIndex * 100)
+                    ));
+                }
+            }
+        }
+
+        var edges = new List<Element>();
+
+        foreach(var node in basicView.SelectMany(list => list))
+        {
+            // Is there a node to the left?
+            var nodeExistsToLeft = !basicView.Select(line => line.First()).Contains(node);
+            if (nodeExistsToLeft)
+            {
+                // Add an edge from this node to its node on the left.
+                var line = basicView.First(line => line.Contains(node));
+                var nodeToLeft = line[line.IndexOf(node) - 1];
+                edges.Add(new Element(new ElementData(Guid.NewGuid().ToString(), node.ToString(), nodeToLeft.ToString())));
+            }
+
+            // Is there a node to the right?
+            var nodeExistsToRight = !basicView.Select(line => line.Last()).Contains(node);
+            if (nodeExistsToRight)
+            {
+                var line = basicView.First(line => line.Contains(node));
+                var nodeToRight = line[line.IndexOf(node) + 1];
+                edges.Add(new Element(new ElementData(Guid.NewGuid().ToString(), node.ToString(), nodeToRight.ToString())));
+            }
+
+            // Is there a row above and are we past half way point?
+            var currentRow = basicView.First(line => line.Contains(node));
+            var beforeHalfWayPoint = node < basicView[(int)Math.Floor(basicView.Count() / 2d)].Min();
+            var pastHalfWayPoint = node > basicView[(int)Math.Floor(basicView.Count() / 2d)].Max();
+
+            if (!currentRow.SequenceEqual(basicView.First()) && pastHalfWayPoint)
+            {
+                // On or before half way point sets above are smaller.
+                var thisIndex = basicView.FindIndex(list => list.SequenceEqual(currentRow));
+                var aboveList = basicView[thisIndex - 1];
+                var indexInThis = currentRow.IndexOf(node);
+
+                // Add same and +1 since below halfway
+                edges.Add(new Element(new ElementData(Guid.NewGuid().ToString(), node.ToString(), aboveList[indexInThis].ToString())));
+                edges.Add(new Element(new ElementData(Guid.NewGuid().ToString(), node.ToString(), aboveList[indexInThis + 1].ToString())));
+
+            }
+
+            // Is there a row below and are we before half way point?
+            if (!currentRow.SequenceEqual(basicView.Last()) && beforeHalfWayPoint)
+            {
+                var thisIndex = basicView.FindIndex(list => list.SequenceEqual(currentRow));
+                var aboveList = basicView[thisIndex + 1];
+                var indexInThis = currentRow.IndexOf(node);
+
+                // Add same and +1 since below halfway
+                edges.Add(new Element(new ElementData(Guid.NewGuid().ToString(), node.ToString(), aboveList[indexInThis].ToString())));
+                edges.Add(new Element(new ElementData(Guid.NewGuid().ToString(), node.ToString(), aboveList[indexInThis + 1].ToString())));
+            }
+        }
+
+        return nodes.Concat(edges);
+    }
+
+    /// <summary>
+    /// Event to handle some async code from a synchronous call.
+    /// </summary>
+    private event RenderPageHandler RenderPage;
+}

@@ -1,0 +1,39 @@
+.main {
+    min-height: 100vh;
+    max-height: 100vh;
+    min-width: 100vw;
+    max-width: 100vw;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background-color: #212121;
+    padding: 5px;
+}
+
+.header {
+    display: flex;
+    flex-direction: row;
+    height: fit-content;
+}
+
+#cy {
+    height: 100%;
+    width: 100%;
+    flex-grow: 1;
+    background-color: #212121;
+}
+
+.border-container {
+    padding: 10px;
+    display: flex;
+    flex-direction: row;
+    border-radius: 3px;
+    border: 1px solid #303030;
+    background-color: #262626;
+    color: #ececec;
+    gap: 40px;
+}
+
+.border-container:hover {
+    box-shadow: 0 0 2px rgba(255, 255, 255, 0.1);
+}
